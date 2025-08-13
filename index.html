@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Vitalidade Masculina</title>
+    <!-- Inclusão do Tailwind CSS para um design moderno e responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fonte Inter do Google Fonts para uma melhor legibilidade -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Estilos personalizados e ajustes finos */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Estilo para a barra de progresso */
+        .progress-bar-fill {
+            transition: width 0.5s ease-in-out;
+        }
+        /* Efeito de fade para a transição entre as telas */
+        .screen {
+            display: none;
+            animation: fadeIn 0.5s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+        <div class="p-6 md:p-8">
+
+            <!-- Tela 1: Boas-vindas -->
+            <div id="screen-welcome" class="screen">
+                <div class="text-center">
+                    <h1 class="text-2xl md:text-3xl font-bold text-blue-900 mb-2">Sua vitalidade está em risco?</h1>
+                    <p class="text-gray-600 mb-6 md:text-lg">Descubra seu Score de Saúde em menos de 3 minutos com nossa avaliação confidencial.</p>
+                    
+                    <div class="text-left bg-blue-50 p-4 rounded-lg mb-6 border border-blue-200 space-y-2">
+                        <p class="flex items-start"><span class="text-blue-600 mr-2">✓</span> <strong>Totalmente Confidencial:</strong> Suas respostas são 100% privadas.</p>
+                        <p class="flex items-start"><span class="text-blue-600 mr-2">✓</span> <strong>Baseado em Ciência:</strong> Questões desenvolvidas por nossa equipe médica.</p>
+                        <p class="flex items-start"><span class="text-blue-600 mr-2">✓</span> <strong>Resultado Imediato:</strong> Entenda seus pontos de risco agora mesmo.</p>
+                    </div>
+
+                    <button id="start-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors text-lg shadow-md">
+                        INICIAR AVALIAÇÃO GRATUITA
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tela 2: Questionário -->
+            <div id="screen-quiz" class="screen">
+                <!-- Barra de Progresso -->
+                <div class="mb-4">
+                    <div class="flex justify-between items-center mb-1">
+                         <span class="text-sm font-medium text-gray-600">Progresso</span>
+                         <span id="progress-text" class="text-sm font-medium text-blue-700"></span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Container da Pergunta -->
+                <div id="quiz-container" class="mt-6">
+                    <h2 id="question-title" class="text-xl md:text-2xl font-semibold mb-6 text-center"></h2>
+                    <div id="options-container" class="space-y-3">
+                        <!-- Opções serão inseridas aqui pelo JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tela 3: Captura de Lead -->
+            <div id="screen-capture" class="screen text-center">
+                <h2 class="text-2xl font-bold text-green-600 mb-2">Sua análise personalizada está pronta!</h2>
+                <p class="text-gray-600 mb-6">Para receber seu Score de Vitalidade detalhado e um relatório confidencial, por favor, informe seus dados abaixo.</p>
+                <form id="lead-form" class="space-y-4">
+                    <input type="text" id="name" placeholder="Seu primeiro nome" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                    <input type="email" id="email" placeholder="Seu melhor e-mail" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                    <div class="text-left text-sm text-gray-500">
+                        <label class="flex items-center">
+                            <input type="checkbox" id="consent" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2" required>
+                            <span>Eu concordo em receber meu resultado e outras comunicações sobre saúde masculina.</span>
+                        </label>
+                    </div>
+                    <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors text-lg shadow-md">
+                        VER MEU RESULTADO AGORA
+                    </button>
+                </form>
+            </div>
+
+            <!-- Tela 4: Resultados -->
+            <div id="screen-results" class="screen text-center">
+                <h2 class="text-2xl font-bold mb-2">Seu Score de Vitalidade é:</h2>
+                <div id="score-visual" class="my-4 w-48 h-48 mx-auto rounded-full flex items-center justify-center text-white font-bold text-5xl shadow-inner">
+                    <span id="score-value"></span>
+                </div>
+                <h3 id="score-category" class="text-2xl font-bold mb-4"></h3>
+                <div class="bg-gray-100 p-4 rounded-lg text-left mb-6 border border-gray-200">
+                    <p id="score-interpretation" class="text-gray-700"></p>
+                </div>
+                
+                <div class="bg-blue-50 border-t-4 border-blue-500 rounded-b text-blue-900 px-4 py-3 shadow-md" role="alert">
+                  <div class="flex">
+                    <div class="py-1"><svg class="fill-current h-6 w-6 text-blue-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zM9 11v4h2v-4H9zm0-4h2v2H9V7z"/></svg></div>
+                    <div>
+                      <p class="font-bold">O que fazer agora? O Próximo Passo.</p>
+                      <p class="text-sm">Seu score é um ponto de partida. A boa notícia é que muitos desses fatores podem ser gerenciados com o acompanhamento correto. Nossa equipe pode analisar seu resultado e criar um plano de ação para você.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <button id="schedule-btn" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors text-lg shadow-md">
+                    AGENDE SUA AVALIAÇÃO MÉDICA GRATUITA
+                </button>
+            </div>
+
+        </div>
+        <!-- Disclaimer Médico Obrigatório -->
+        <footer class="bg-gray-100 p-4 text-center text-xs text-gray-500 border-t">
+            <strong>Aviso Legal:</strong> Esta ferramenta é para fins informativos e educacionais. Os resultados não constituem um diagnóstico médico e não substituem a consulta com um profissional de saúde qualificado.
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIGURAÇÃO DAS PERGUNTAS ---
+            // Cada pergunta tem um título, opções e um valor (pontos de risco) para cada opção.
+            const questions = [
+                {
+                    question: "Qual sua faixa de idade?",
+                    options: [
+                        { text: "Menos de 40 anos", value: 2 },
+                        { text: "40 - 49 anos", value: 5 },
+                        { text: "50 - 59 anos", value: 8 },
+                        { text: "60 anos ou mais", value: 12 }
+                    ]
+                },
+                {
+                    question: "Você é fumante?",
+                    options: [
+                        { text: "Não, nunca fumei", value: 0 },
+                        { text: "Sou ex-fumante", value: 5 },
+                        { text: "Sim, até 10 por dia", value: 15 },
+                        { text: "Sim, mais de 10 por dia", value: 20 }
+                    ]
+                },
+                {
+                    question: "Como você classifica seu nível de atividade física?",
+                    options: [
+                        { text: "Intenso (4+ vezes/semana)", value: 0 },
+                        { text: "Moderado (2-3 vezes/semana)", value: 4 },
+                        { text: "Leve (Caminhadas ocasionais)", value: 8 },
+                        { text: "Sedentário (Nenhuma atividade)", value: 15 }
+                    ]
+                },
+                {
+                    question: "Você foi diagnosticado com Hipertensão (pressão alta)?",
+                    options: [
+                        { text: "Não", value: 0 },
+                        { text: "Sim, mas está controlada", value: 8 },
+                        { text: "Sim, e não está bem controlada", value: 18 }
+                    ]
+                },
+                {
+                    question: "Você foi diagnosticado com Diabetes?",
+                    options: [
+                        { text: "Não", value: 0 },
+                        { text: "Sim, mas está controlada", value: 10 },
+                        { text: "Sim, e não está bem controlada", value: 20 }
+                    ]
+                },
+                {
+                    question: "Seus níveis de Colesterol ou Triglicerídeos são altos?",
+                    options: [
+                        { text: "Não, estão normais", value: 0 },
+                        { text: "Não sei", value: 5 },
+                        { text: "Sim, estão um pouco altos", value: 8 },
+                        { text: "Sim, estão muito altos", value: 15 }
+                    ]
+                },
+                {
+                    question: "Como você avalia seu nível de energia no dia a dia?",
+                    options: [
+                        { text: "Alto, me sinto disposto", value: 0 },
+                        { text: "Normal, com altos e baixos", value: 5 },
+                        { text: "Baixo, frequentemente cansado", value: 10 },
+                        { text: "Muito baixo, exausto", value: 15 }
+                    ]
+                },
+                {
+                    question: "Sobre suas ereções, qual opção melhor descreve sua situação?",
+                    options: [
+                        { text: "Firmes e confiáveis na maioria das vezes", value: 0 },
+                        { text: "Às vezes, perco a firmeza", value: 10 },
+                        { text: "Frequentemente, não são firmes o suficiente", value: 20 },
+                        { text: "Raramente ou nunca consigo ter uma ereção", value: 30 }
+                    ]
+                }
+            ];
+
+            // --- VARIÁVEIS DE ESTADO DO APLICATIVO ---
+            let currentQuestionIndex = 0;
+            let score = 0;
+            let userAnswers = {}; // Para guardar as respostas e usar na interpretação
+
+            // --- SELETORES DE ELEMENTOS DO DOM ---
+            const screens = {
+                welcome: document.getElementById('screen-welcome'),
+                quiz: document.getElementById('screen-quiz'),
+                capture: document.getElementById('screen-capture'),
+                results: document.getElementById('screen-results')
+            };
+
+            const startBtn = document.getElementById('start-btn');
+            const leadForm = document.getElementById('lead-form');
+            const scheduleBtn = document.getElementById('schedule-btn');
+            
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const questionTitle = document.getElementById('question-title');
+            const optionsContainer = document.getElementById('options-container');
+
+            // --- FUNÇÕES PRINCIPAIS ---
+
+            // Função para controlar a visibilidade das telas
+            function showScreen(screenName) {
+                Object.values(screens).forEach(screen => screen.style.display = 'none');
+                screens[screenName].style.display = 'block';
+            }
+
+            // Função para renderizar a pergunta atual e suas opções
+            function renderQuestion() {
+                if (currentQuestionIndex >= questions.length) {
+                    showScreen('capture');
+                    return;
+                }
+
+                // Atualiza a barra de progresso
+                const progress = ((currentQuestionIndex) / questions.length) * 100;
+                progressBar.style.width = `${progress}%`;
+                progressText.textContent = `Pergunta ${currentQuestionIndex + 1} de ${questions.length}`;
+
+                const currentQuestion = questions[currentQuestionIndex];
+                questionTitle.textContent = currentQuestion.question;
+                optionsContainer.innerHTML = '';
+
+                // Cria os botões de opção
+                currentQuestion.options.forEach(option => {
+                    const button = document.createElement('button');
+                    button.textContent = option.text;
+                    button.classList.add('w-full', 'text-left', 'p-4', 'border', 'border-gray-300', 'rounded-lg', 'hover:bg-blue-50', 'hover:border-blue-400', 'transition-all', 'duration-200');
+                    button.onclick = () => selectAnswer(option.value, currentQuestion.question, option.text);
+                    optionsContainer.appendChild(button);
+                });
+            }
+
+            // Função chamada quando uma resposta é selecionada
+            function selectAnswer(value, question, answerText) {
+                score += value;
+                userAnswers[question] = answerText; // Armazena a resposta textual
+                currentQuestionIndex++;
+                renderQuestion();
+            }
+
+            // Função para renderizar a tela de resultados
+            function showResults() {
+                const scoreValueEl = document.getElementById('score-value');
+                const scoreVisualEl = document.getElementById('score-visual');
+                const scoreCategoryEl = document.getElementById('score-category');
+                const scoreInterpretationEl = document.getElementById('score-interpretation');
+
+                scoreValueEl.textContent = score;
+
+                let category = '';
+                let interpretation = '';
+                let colorClass = '';
+
+                // Lógica para definir a categoria e a cor do resultado
+                if (score <= 35) {
+                    category = 'Risco Baixo';
+                    colorClass = 'bg-green-500';
+                    interpretation = 'Seu score indica um baixo risco para a saúde vascular e vitalidade. Continue com seus hábitos saudáveis e mantenha o acompanhamento preventivo em dia. Mesmo com um bom resultado, uma avaliação pode ajudar a otimizar ainda mais sua saúde.';
+                } else if (score <= 70) {
+                    category = 'Risco Moderado';
+                    colorClass = 'bg-yellow-500';
+                    interpretation = `Seu resultado indica que alguns fatores de estilo de vida e saúde, como ${getWorstFactors()}, estão colocando sua saúde vascular e seu desempenho em risco moderado. É crucial agir agora para evitar que esses fatores se agravem.`;
+                } else {
+                    category = 'Risco Alto';
+                    colorClass = 'bg-red-600';
+                    interpretation = `Seu score indica um alto risco. Fatores importantes como ${getWorstFactors()} precisam de atenção imediata. A boa notícia é que muitos destes fatores são reversíveis com o tratamento e acompanhamento corretos. Não adie os cuidados com sua saúde.`;
+                }
+                
+                scoreCategoryEl.textContent = category;
+                scoreVisualEl.className = `my-4 w-48 h-48 mx-auto rounded-full flex items-center justify-center text-white font-bold text-5xl shadow-inner ${colorClass}`;
+                scoreInterpretationEl.textContent = interpretation;
+
+                showScreen('results');
+            }
+            
+            // Função auxiliar para pegar os piores fatores para a interpretação
+            function getWorstFactors() {
+                // Esta é uma lógica simplificada. Pode ser aprimorada para ser mais precisa.
+                let factors = [];
+                if (userAnswers["Você é fumante?"] && !userAnswers["Você é fumante?"].includes("Não")) factors.push("o tabagismo");
+                if (userAnswers["Você foi diagnosticado com Diabetes?"] !== "Não") factors.push("o diabetes");
+                if (userAnswers["Você foi diagnosticado com Hipertensão (pressão alta)?"] !== "Não") factors.push("a hipertensão");
+                if (userAnswers["Sobre suas ereções, qual opção melhor descreve sua situação?"] && !userAnswers["Sobre suas ereções, qual opção melhor descreve sua situação?"].includes("Firmes")) factors.push("a dificuldade de ereção");
+
+                if (factors.length === 0) return "seu estilo de vida";
+                if (factors.length === 1) return factors[0];
+                
+                const last = factors.pop();
+                return factors.join(', ') + ' e ' + last;
+            }
+
+
+            // --- EVENT LISTENERS ---
+
+            startBtn.addEventListener('click', () => {
+                showScreen('quiz');
+                renderQuestion();
+            });
+
+            leadForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const name = document.getElementById('name').value;
+                const email = document.getElementById('email').value;
+                
+                // AQUI: Integre com seu serviço de e-mail marketing (CRM)
+                // Ex: enviarDadosParaCRM(name, email, score, userAnswers);
+                console.log('Lead Capturado:', { name, email, score });
+
+                showResults();
+            });
+            
+            scheduleBtn.addEventListener('click', () => {
+                // AQUI: Redirecione para sua página de agendamento
+                window.location.href = 'https://mencarebrasil.com.br';
+                console.log('Redirecionando para agendamento...');
+            });
+
+            // --- INICIALIZAÇÃO DO APP ---
+            showScreen('welcome');
+        });
+    </script>
+</body>
+</html>
