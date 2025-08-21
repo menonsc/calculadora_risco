@@ -240,13 +240,31 @@
             // Monta corpo application/x-www-form-urlencoded a partir do payload
             function buildFormBody(data) {
                 const params = new URLSearchParams();
-                Object.keys(data).forEach((key) => {
-                    const value = data[key];
-                    const valueStr = (value !== null && typeof value === 'object')
-                        ? JSON.stringify(value)
-                        : String(value);
-                    params.append(key, valueStr);
-                });
+
+                function appendParam(prefix, value) {
+                    if (value === undefined || value === null) {
+                        params.append(prefix, '');
+                        return;
+                    }
+
+                    if (Array.isArray(value)) {
+                        value.forEach((item, index) => {
+                            appendParam(`${prefix}[${index}]`, item);
+                        });
+                        return;
+                    }
+
+                    if (typeof value === 'object') {
+                        Object.keys(value).forEach((key) => {
+                            appendParam(`${prefix}[${key}]`, value[key]);
+                        });
+                        return;
+                    }
+
+                    params.append(prefix, String(value));
+                }
+
+                Object.keys(data).forEach((key) => appendParam(key, data[key]));
                 return params.toString();
             }
 
