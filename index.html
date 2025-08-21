@@ -208,6 +208,7 @@
             let currentQuestionIndex = 0;
             let score = 0;
             let userAnswers = {}; // Para guardar as respostas e usar na interpretação
+            let answersDetailed = []; // Para envio ao n8n com valores
 
             // --- SELETORES DE ELEMENTOS DO DOM ---
             const screens = {
@@ -227,6 +228,501 @@
             const optionsContainer = document.getElementById('options-container');
 
             // --- FUNÇÕES PRINCIPAIS ---
+
+            // Detecta se está rodando localmente
+            const isLocalhost = window.location.hostname === 'localhost' || 
+                               window.location.hostname === '127.0.0.1' || 
+                               window.location.hostname === '';
+
+            // URL do webhook do n8n (substitua pelo seu endpoint)
+            const N8N_WEBHOOK_URL = 'https://webhook-test.com/b6256bacfa10f5e3b10b3887262857c5';
+
+            // Função robusta para envio de dados sem depender de preflight CORS
+            async function sendDataToWebhook(payload) {
+                console.log('🔵 Iniciando envio para:', N8N_WEBHOOK_URL);
+                console.log('📦 Payload:', payload);
+
+                // Estratégia 1: fetch com CORS usando Content-Type simples (evita preflight)
+                try {
+                    const response = await fetch(N8N_WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: {
+                            // text/plain é header simples (sem preflight). Enviamos JSON como texto.
+                            'Content-Type': 'text/plain;charset=UTF-8'
+                        },
+                        mode: 'cors',
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Erro na resposta do servidor: ${response.status} ${response.statusText}`);
+                    }
+
+                    let responseData;
+                    try {
+                        responseData = await response.text();
+                    } catch {
+                        responseData = null;
+                    }
+                    console.log('✅ Envio via fetch CORS (sem preflight) concluído.');
+                    return { success: true, method: 'fetch_cors_text', response: responseData };
+                } catch (errorCors) {
+                    console.warn('⚠️ Falha no fetch CORS (sem preflight):', errorCors);
+
+                    // Estratégia 2: fetch no-cors (fire-and-forget). Request é enviado, resposta fica opaca.
+                    try {
+                        await fetch(N8N_WEBHOOK_URL, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'text/plain;charset=UTF-8'
+                            },
+                            mode: 'no-cors',
+                            body: JSON.stringify(payload)
+                        });
+                        console.log('✅ Envio realizado em modo no-cors (fire-and-forget).');
+                        return { success: true, method: 'fetch_no_cors' };
+                    } catch (errorNoCors) {
+                        console.warn('⚠️ Falha no fetch no-cors:', errorNoCors);
+
+                        // Estratégia 3: navigator.sendBeacon (fire-and-forget otimizado)
+                        if (navigator.sendBeacon) {
+                            try {
+                                const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain;charset=UTF-8' });
+                                const ok = navigator.sendBeacon(N8N_WEBHOOK_URL, blob);
+                                if (ok) {
+                                    console.log('✅ Envio aceito via sendBeacon.');
+                                    return { success: true, method: 'send_beacon' };
+                                }
+                            } catch (beaconErr) {
+                                console.warn('⚠️ Falha no sendBeacon:', beaconErr);
+                            }
+                        }
+
+                        // Estratégia 4: Formulário invisível postado para um iframe (compatível cross-origin)
+                        try {
+                            await postViaHiddenForm(N8N_WEBHOOK_URL, payload);
+                            console.log('✅ Envio realizado via formulário oculto.');
+                            return { success: true, method: 'hidden_form_iframe' };
+                        } catch (formErr) {
+                            console.error('❌ Todas as estratégias de envio falharam.');
+                            return { success: false, error: formErr };
+                        }
+                    }
+                }
+            }
+
+            // Envia usando um <form> oculto para um <iframe> invisível (evita CORS)
+            function postViaHiddenForm(actionUrl, data) {
+                return new Promise((resolve) => {
+                    // Cria/garante iframe oculto
+                    const iframeId = 'n8n_webhook_iframe';
+                    let iframe = document.getElementById(iframeId);
+                    if (!iframe) {
+                        iframe = document.createElement('iframe');
+                        iframe.style.display = 'none';
+                        iframe.name = iframeId;
+                        iframe.id = iframeId;
+                        document.body.appendChild(iframe);
+                    }
+
+                    // Cria formulário oculto
+                    const form = document.createElement('form');
+                    form.style.display = 'none';
+                    form.method = 'POST';
+                    form.action = actionUrl;
+                    form.target = iframeId;
+                    form.enctype = 'application/x-www-form-urlencoded';
+
+                    // Adiciona campos do payload (objetos/arrays viram JSON strings)
+                    Object.keys(data).forEach((key) => {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        const value = data[key];
+                        input.value = (value !== null && typeof value === 'object') ? JSON.stringify(value) : String(value);
+                        form.appendChild(input);
+                    });
+
+                    document.body.appendChild(form);
+
+                    // Submete e limpa depois de um curto delay
+                    try {
+                        form.submit();
+                    } catch (e) {
+                        // Mesmo se der erro de submissão, seguimos para cleanup
+                        console.warn('Form submit error:', e);
+                    }
+
+                    setTimeout(() => {
+                        form.remove();
+                        resolve(true);
+                    }, 300);
+                });
+            }
+
+            // Verifica se o endpoint está acessível
+            function checkEndpointHealth() {
+                console.log('🔍 Verificando saúde do endpoint...');
+                return fetch(N8N_WEBHOOK_URL, {
+                    method: 'HEAD',
+                    mode: 'no-cors'
+                }).then(() => {
+                    console.log('✅ Endpoint respondeu ao HEAD');
+                    return true;
+                }).catch(err => {
+                    console.warn('⚠️ Endpoint não respondeu ao HEAD:', err);
+                    return false;
+                });
+            }
+
+            // Testa conectividade básica com o endpoint
+            function testEndpointConnectivity() {
+                console.log('🌐 Testando conectividade básica...');
+                
+                // Teste 1: Verificação de rede
+                if (!navigator.onLine) {
+                    console.error('❌ Navegador offline');
+                    return Promise.resolve(false);
+                }
+                
+                // Teste 2: Verificação de DNS
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        console.log('✅ DNS funcionando');
+                        resolve(true);
+                    };
+                    img.onerror = () => {
+                        console.warn('⚠️ DNS pode ter problemas');
+                        resolve(true); // Continua mesmo com warning
+                    };
+                    img.src = N8N_WEBHOOK_URL.replace('/webhook-test/', '/favicon.ico');
+                });
+            }
+
+            // Função para testar o webhook manualmente
+            window.testWebhook = function() {
+                console.log('🧪 Testando webhook manualmente...');
+                console.log('🏠 Ambiente local:', isLocalhost);
+                
+                const testPayload = {
+                    test: true,
+                    message: 'Teste de conectividade',
+                    timestamp: new Date().toISOString(),
+                    user_agent: navigator.userAgent,
+                    url: window.location.href,
+                    environment: isLocalhost ? 'local' : 'production'
+                };
+                
+                return sendDataToWebhook(testPayload)
+                    .then(result => {
+                        if (result.success) {
+                            console.log('✅ Teste do webhook bem-sucedido:', result);
+                            alert('✅ Webhook funcionando! Método: ' + result.method);
+                            return true;
+                        } else {
+                            console.error('❌ Teste do webhook falhou:', result.error);
+                            alert('❌ Webhook falhou: ' + result.error.message);
+                            return false;
+                        }
+                    })
+                    .catch(err => {
+                        console.error('❌ Erro inesperado no teste:', err);
+                        alert('❌ Erro inesperado: ' + err.message);
+                        return false;
+                    });
+            };
+
+            // Adiciona botão de teste no console (para desenvolvedores)
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.log('🔧 Modo desenvolvimento detectado. Use testWebhook() no console para testar o webhook.');
+                window.testWebhook = testWebhook;
+                
+                // Adiciona botão de teste visual na página
+                const testButton = document.createElement('button');
+                testButton.textContent = '🧪 Testar Webhook';
+                testButton.className = 'fixed top-4 right-4 bg-red-500 text-white px-3 py-2 rounded text-sm z-50 hover:bg-red-600';
+                testButton.onclick = testWebhook;
+                document.body.appendChild(testButton);
+                
+                // Adiciona informações de debug na tela
+                const debugInfo = document.createElement('div');
+                debugInfo.className = 'fixed top-16 right-4 bg-yellow-100 border border-yellow-300 rounded p-3 text-xs text-yellow-800 max-w-xs z-50';
+                debugInfo.innerHTML = `
+                    <strong>🔧 Modo Desenvolvimento</strong><br>
+                    • Ambiente: Local<br>
+                    • Console: F12 → testWebhook()<br>
+                    • URLs alternativas ativas<br>
+                    • Botão de teste disponível
+                `;
+                document.body.appendChild(debugInfo);
+                
+                // Adiciona função para testar URLs específicas
+                window.testSpecificUrl = function(url) {
+                    console.log('🧪 Testando URL específica:', url);
+                    const testPayload = {
+                        test: true,
+                        message: 'Teste de URL específica',
+                        timestamp: new Date().toISOString(),
+                        url: url
+                    };
+                    
+                    // Testa a URL específica com a nova função
+                    return fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        mode: 'cors',
+                        body: JSON.stringify(testPayload)
+                    }).then(response => {
+                        console.log('✅ URL funcionou:', response.status);
+                        return response.text();
+                    }).catch(error => {
+                        console.error('❌ URL falhou:', error);
+                        throw error;
+                    });
+                };
+                
+                console.log('🔧 Funções adicionais disponíveis:');
+                console.log('• testWebhook() - Teste completo');
+                console.log('• testSpecificUrl("URL") - Teste URL específica');
+                console.log('• quickTest() - Teste rápido e direto');
+                console.log('• simulateEnvio() - Simula envio real');
+                console.log('• verificarN8N() - Verifica especificamente o N8N');
+                console.log('• testarCORS() - Testa problemas específicos de CORS');
+                console.log('• testarCredenciais() - Testa se as credenciais estão corretas');
+                
+                // Função de teste rápido para debug
+                window.quickTest = function() {
+                    console.log('🚀 Teste rápido iniciado...');
+                    
+                    const testData = {
+                        test: true,
+                        message: 'Teste rápido',
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    console.log('📦 Dados de teste:', testData);
+                    
+                    return sendDataToWebhook(testData)
+                        .then(result => {
+                            if (result.success) {
+                                console.log('✅ Teste rápido funcionou! Método:', result.method);
+                                return result;
+                            } else {
+                                console.error('❌ Teste rápido falhou:', result.error);
+                                throw result.error;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('❌ Erro no teste rápido:', error);
+                            throw error;
+                        });
+                };
+                
+                console.log('• quickTest() - Teste rápido e direto');
+                
+                // Função para simular envio real
+                window.simulateEnvio = function() {
+                    console.log('🎭 Simulando envio real...');
+                    
+                    const testPayload = {
+                        name: 'Teste Simulado',
+                        email: 'teste@local.com',
+                        consent: true,
+                        score: 10,
+                        score_category: 'Risco Baixo',
+                        total_questions: 8,
+                        answers_text: { 'teste': 'simulado' },
+                        answers_detailed: [{ question: 'teste', answer: 'simulado', value: 10 }],
+                        utm: {},
+                        page: { url: window.location.href, referrer: '' },
+                        device: { user_agent: navigator.userAgent, language: navigator.language, screen: { width: 800, height: 600 } },
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    console.log('📦 Payload simulado:', testPayload);
+                    
+                    // Simula o mesmo fluxo do envio real
+                    return sendDataToWebhook(testPayload)
+                        .then(result => {
+                            console.log('✅ Simulação concluída:', result);
+                            alert('Simulação concluída: ' + result);
+                            return result;
+                        })
+                        .catch(err => {
+                            console.error('❌ Simulação falhou:', err);
+                            alert('Simulação falhou: ' + err.message);
+                            throw err;
+                        });
+                };
+                
+                console.log('• simulateEnvio() - Simula envio real');
+                
+                // Função para verificar se o webhook está funcionando
+                window.verificarWebhook = function() {
+                    console.log('🔍 Verificando se o webhook está funcionando...');
+                    
+                    // Tenta fazer uma requisição simples para ver se o endpoint responde
+                    fetch(N8N_WEBHOOK_URL, {
+                        method: 'HEAD',
+                        mode: 'no-cors'
+                    })
+                    .then(() => {
+                        console.log('✅ Endpoint responde (HEAD request)');
+                        alert('✅ Webhook está funcionando! Endpoint responde.');
+                    })
+                    .catch(error => {
+                        console.log('⚠️ Endpoint não respondeu ao HEAD:', error.message);
+                        
+                        // Tenta com OPTIONS
+                        fetch(N8N_WEBHOOK_URL, {
+                            method: 'OPTIONS',
+                            mode: 'no-cors'
+                        })
+                        .then(() => {
+                            console.log('✅ Endpoint responde (OPTIONS request)');
+                            alert('✅ Webhook está funcionando! Endpoint responde.');
+                        })
+                        .catch(optError => {
+                            console.log('⚠️ Endpoint não respondeu ao OPTIONS:', optError.message);
+                            alert('⚠️ Endpoint pode estar offline. Verifique se o N8N está rodando.');
+                        });
+                    });
+                };
+                
+                console.log('• verificarWebhook() - Verifica se o endpoint está online');
+                
+                // Função para testar CORS especificamente
+                window.testarCORS = function() {
+                    console.log('🌐 Testando problemas de CORS...');
+                    
+                    const testData = {
+                        test: true,
+                        message: 'Teste CORS',
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    console.log('📡 Testando CORS com a nova função simplificada...');
+                    
+                    return sendDataToWebhook(testData)
+                        .then(result => {
+                            if (result.success) {
+                                console.log('✅ CORS funcionando! Método:', result.method);
+                                return result;
+                            } else {
+                                console.error('❌ CORS falhou:', result.error);
+                                throw result.error;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('❌ Erro no teste CORS:', error);
+                            console.log('🔍 Problemas identificados:');
+                            console.log('• CORS não configurado no servidor');
+                            console.log('• Firewall bloqueando requisições');
+                            console.log('• Webhook não configurado corretamente');
+                            console.log('• Servidor N8N offline');
+                            throw error;
+                        });
+                };
+                
+                console.log('• testarCORS() - Testa problemas específicos de CORS');
+                
+                // Função para verificar especificamente o N8N
+                window.verificarN8N = function() {
+                    console.log('🔍 Verificando especificamente o N8N...');
+                    
+                    const n8nUrl = N8N_WEBHOOK_URL;
+                    console.log('📡 URL do N8N:', n8nUrl);
+                    
+                    // Teste 1: Verificar se o domínio resolve
+                    console.log('🌐 Testando resolução do domínio...');
+                    
+                    // Teste 2: Verificar conectividade básica
+                    console.log('📡 Testando conectividade básica...');
+                    fetch(n8nUrl, {
+                        method: 'HEAD',
+                        mode: 'no-cors'
+                    })
+                    .then(() => {
+                        console.log('✅ N8N responde ao HEAD request');
+                        console.log('💡 O servidor está online, testando envio de dados...');
+                        
+                        // Teste 3: Verificar se é problema de CORS
+                        console.log('🌐 Testando envio de dados...');
+                        return sendDataToWebhook({ test: true, message: 'Teste de conectividade' });
+                    })
+                    .then(result => {
+                        if (result.success) {
+                            console.log('✅ N8N funcionando perfeitamente! Método:', result.method);
+                            console.log('💡 O webhook está funcionando corretamente');
+                        } else {
+                            console.error('❌ N8N com problemas:', result.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('❌ N8N não responde:', error.message);
+                        console.log('🔍 Problemas identificados:');
+                        console.log('• Servidor N8N pode estar offline');
+                        console.log('• Porta 5678 pode estar fechada');
+                        console.log('• Firewall pode estar bloqueando');
+                        console.log('• URL pode estar incorreta');
+                        console.log('💡 Soluções:');
+                        console.log('1. Verificar se o N8N está rodando');
+                        console.log('2. Verificar configurações de porta');
+                        console.log('3. Verificar firewall/antivírus');
+                        console.log('4. Testar com IP direto se possível');
+                    });
+                };
+                
+                console.log('• verificarN8N() - Verifica especificamente o N8N');
+                
+                // Função para testar credenciais de autenticação
+                window.testarCredenciais = function() {
+                    console.log('🔐 Testando credenciais de autenticação...');
+                    console.log('⚠️ NOTA: Autenticação foi removida do código');
+                    console.log('💡 O webhook agora usa apenas Content-Type: application/json');
+                    
+                    const testData = {
+                        test: true,
+                        message: 'Teste sem autenticação',
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    console.log('📡 Enviando teste sem autenticação...');
+                    
+                    return sendDataToWebhook(testData)
+                        .then(result => {
+                            if (result.success) {
+                                console.log('✅ Teste funcionou! Método:', result.method);
+                                alert('✅ Teste funcionando! Método: ' + result.method);
+                                return result;
+                            } else {
+                                console.error('❌ Teste falhou:', result.error);
+                                alert('❌ Teste falhou: ' + result.error.message);
+                                throw result.error;
+                            }
+                        })
+                        .catch(err => {
+                            console.error('❌ Erro no teste:', err);
+                            alert('❌ Erro no teste: ' + err.message);
+                            throw err;
+                        });
+                };
+                
+                console.log('• testarCredenciais() - Testa se as credenciais estão corretas');
+            }
+
+            // Captura parâmetros UTM da URL
+            function getUTMParams() {
+                const params = new URLSearchParams(window.location.search);
+                return {
+                    utm_source: params.get('utm_source') || '',
+                    utm_medium: params.get('utm_medium') || '',
+                    utm_campaign: params.get('utm_campaign') || '',
+                    utm_term: params.get('utm_term') || '',
+                    utm_content: params.get('utm_content') || ''
+                };
+            }
 
             // Função para controlar a visibilidade das telas
             function showScreen(screenName) {
@@ -264,6 +760,7 @@
             function selectAnswer(value, question, answerText) {
                 score += value;
                 userAnswers[question] = answerText; // Armazena a resposta textual
+                answersDetailed.push({ question, answer: answerText, value });
                 currentQuestionIndex++;
                 renderQuestion();
             }
@@ -319,6 +816,37 @@
                 return factors.join(', ') + ' e ' + last;
             }
 
+            // Função para mostrar status do envio
+            function showEnvioStatus(message, type = 'info') {
+                const statusDiv = document.getElementById('envio-status') || createStatusDiv();
+                
+                statusDiv.textContent = message;
+                statusDiv.className = `mt-3 p-3 rounded-lg text-sm ${
+                    type === 'success' ? 'bg-green-100 text-green-800 border border-green-300' :
+                    type === 'error' ? 'bg-red-100 text-red-800 border border-red-300' :
+                    'bg-blue-100 text-blue-800 border border-blue-300'
+                }`;
+                
+                // Auto-remove após 5 segundos
+                setTimeout(() => {
+                    if (statusDiv.parentNode) {
+                        statusDiv.remove();
+                    }
+                }, 5000);
+            }
+
+            // Cria div de status se não existir
+            function createStatusDiv() {
+                const statusDiv = document.createElement('div');
+                statusDiv.id = 'envio-status';
+                statusDiv.className = 'mt-3 p-3 rounded-lg text-sm';
+                
+                // Insere após o formulário
+                const form = document.getElementById('lead-form');
+                form.parentNode.insertBefore(statusDiv, form.nextSibling);
+                
+                return statusDiv;
+            }
 
             // --- EVENT LISTENERS ---
 
@@ -327,16 +855,108 @@
                 renderQuestion();
             });
 
-            leadForm.addEventListener('submit', (e) => {
+            leadForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const name = document.getElementById('name').value;
                 const email = document.getElementById('email').value;
-                
-                // AQUI: Integre com seu serviço de e-mail marketing (CRM)
-                // Ex: enviarDadosParaCRM(name, email, score, userAnswers);
-                console.log('Lead Capturado:', { name, email, score });
+                const consent = document.getElementById('consent').checked;
 
+                const payload = {
+                    name,
+                    email,
+                    consent,
+                    score,
+                    score_category: (score <= 35) ? 'Risco Baixo' : (score <= 70) ? 'Risco Moderado' : 'Risco Alto',
+                    total_questions: questions.length,
+                    answers_text: userAnswers,
+                    answers_detailed: answersDetailed,
+                    utm: getUTMParams(),
+                    page: {
+                        url: window.location.href,
+                        referrer: document.referrer
+                    },
+                    device: {
+                        user_agent: navigator.userAgent,
+                        language: navigator.language,
+                        screen: { width: window.screen.width, height: window.screen.height }
+                    },
+                    timestamp: new Date().toISOString()
+                };
+
+                // Validação do payload antes do envio
+                if (!name || !email || !consent) {
+                    console.error('❌ Dados obrigatórios não preenchidos:', { name, email, consent });
+                    alert('Por favor, preencha todos os campos obrigatórios.');
+                    return;
+                }
+
+                if (score === undefined || score === null) {
+                    console.error('❌ Score não calculado:', score);
+                    alert('Erro: Score não foi calculado. Tente novamente.');
+                    return;
+                }
+
+                console.log('📦 Payload validado:', payload);
+
+                const submitBtn = leadForm.querySelector('button[type="submit"]');
+                const originalText = submitBtn.textContent;
+                
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = '🔄 Enviando...';
+                    submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+                }
+
+                console.log('🚀 Iniciando processo de envio...');
+                console.log('📊 Score calculado:', score);
+                console.log('👤 Dados do usuário:', { name, email, consent });
+                console.log('📝 Respostas detalhadas:', answersDetailed);
+
+                // Mostra os resultados para o usuário imediatamente
                 showResults();
+
+                try {
+                    // Envia os dados usando a nova função simplificada
+                    const result = await sendDataToWebhook(payload);
+
+                    if (result.success) {
+                        console.log('🎉 Envio bem-sucedido com o método:', result.method);
+                        showEnvioStatus('✅ Dados enviados com sucesso!', 'success');
+                        
+                        // Mostra feedback visual temporário
+                        if (submitBtn) {
+                            submitBtn.textContent = '✅ Enviado!';
+                            submitBtn.classList.add('bg-green-500');
+                            setTimeout(() => {
+                                submitBtn.textContent = originalText;
+                                submitBtn.classList.remove('bg-green-500');
+                            }, 2000);
+                        }
+                    } else {
+                        console.error('💥 Falha final no envio:', result.error);
+                        showEnvioStatus('❌ Houve um erro ao enviar seus dados. Tente novamente.', 'error');
+                        
+                        // Mostra feedback visual de erro
+                        if (submitBtn) {
+                            submitBtn.textContent = '❌ Erro no envio';
+                            submitBtn.classList.add('bg-red-500');
+                            setTimeout(() => {
+                                submitBtn.textContent = originalText;
+                                submitBtn.classList.remove('bg-red-500');
+                            }, 3000);
+                        }
+                    }
+                } catch (error) {
+                    console.error('💥 Erro inesperado no envio:', error);
+                    showEnvioStatus('❌ Erro inesperado. Tente novamente.', 'error');
+                } finally {
+                    // Restaura o botão
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalText;
+                        submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+                    }
+                }
             });
             
             scheduleBtn.addEventListener('click', () => {
