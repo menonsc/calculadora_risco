@@ -235,23 +235,36 @@
                                window.location.hostname === '';
 
             // URL do webhook do n8n (substitua pelo seu endpoint)
-            const N8N_WEBHOOK_URL = 'https://webhook-test.com/b6256bacfa10f5e3b10b3887262857c5';
+            const N8N_WEBHOOK_URL = 'https://auto.joaomenon.com/webhook-test/21389a12-4802-402b-9d54-da852e1b819d';
+
+            // Monta corpo application/x-www-form-urlencoded a partir do payload
+            function buildFormBody(data) {
+                const params = new URLSearchParams();
+                Object.keys(data).forEach((key) => {
+                    const value = data[key];
+                    const valueStr = (value !== null && typeof value === 'object')
+                        ? JSON.stringify(value)
+                        : String(value);
+                    params.append(key, valueStr);
+                });
+                return params.toString();
+            }
 
             // Função robusta para envio de dados sem depender de preflight CORS
             async function sendDataToWebhook(payload) {
                 console.log('🔵 Iniciando envio para:', N8N_WEBHOOK_URL);
                 console.log('📦 Payload:', payload);
 
-                // Estratégia 1: fetch com CORS usando Content-Type simples (evita preflight)
+                // Estratégia 1: fetch com CORS usando x-www-form-urlencoded (simple request)
                 try {
+                    const formBody = buildFormBody(payload);
                     const response = await fetch(N8N_WEBHOOK_URL, {
                         method: 'POST',
                         headers: {
-                            // text/plain é header simples (sem preflight). Enviamos JSON como texto.
-                            'Content-Type': 'text/plain;charset=UTF-8'
+                            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
                         },
                         mode: 'cors',
-                        body: JSON.stringify(payload)
+                        body: formBody
                     });
 
                     if (!response.ok) {
@@ -264,34 +277,36 @@
                     } catch {
                         responseData = null;
                     }
-                    console.log('✅ Envio via fetch CORS (sem preflight) concluído.');
-                    return { success: true, method: 'fetch_cors_text', response: responseData };
+                    console.log('✅ Envio via fetch CORS (x-www-form-urlencoded) concluído.');
+                    return { success: true, method: 'fetch_cors_form', response: responseData };
                 } catch (errorCors) {
                     console.warn('⚠️ Falha no fetch CORS (sem preflight):', errorCors);
 
-                    // Estratégia 2: fetch no-cors (fire-and-forget). Request é enviado, resposta fica opaca.
+                    // Estratégia 2: fetch no-cors (fire-and-forget) com x-www-form-urlencoded
                     try {
+                        const formBody = buildFormBody(payload);
                         await fetch(N8N_WEBHOOK_URL, {
                             method: 'POST',
                             headers: {
-                                'Content-Type': 'text/plain;charset=UTF-8'
+                                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
                             },
                             mode: 'no-cors',
-                            body: JSON.stringify(payload)
+                            body: formBody
                         });
                         console.log('✅ Envio realizado em modo no-cors (fire-and-forget).');
-                        return { success: true, method: 'fetch_no_cors' };
+                        return { success: true, method: 'fetch_no_cors_form' };
                     } catch (errorNoCors) {
                         console.warn('⚠️ Falha no fetch no-cors:', errorNoCors);
 
                         // Estratégia 3: navigator.sendBeacon (fire-and-forget otimizado)
                         if (navigator.sendBeacon) {
                             try {
-                                const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain;charset=UTF-8' });
+                                const formBody = buildFormBody(payload);
+                                const blob = new Blob([formBody], { type: 'application/x-www-form-urlencoded;charset=UTF-8' });
                                 const ok = navigator.sendBeacon(N8N_WEBHOOK_URL, blob);
                                 if (ok) {
                                     console.log('✅ Envio aceito via sendBeacon.');
-                                    return { success: true, method: 'send_beacon' };
+                                    return { success: true, method: 'send_beacon_form' };
                                 }
                             } catch (beaconErr) {
                                 console.warn('⚠️ Falha no sendBeacon:', beaconErr);
